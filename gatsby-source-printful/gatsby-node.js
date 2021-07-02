@@ -1,4 +1,5 @@
 const { createRemoteFileNode } = require('gatsby-source-filesystem')
+const { map, sleep, setConcurrency } = require('async-parallel')
 
 const PrintfulClient = require('./lib/printful')
 const { parseNameForSlug, parsePriceString } = require('./lib/utils')
@@ -21,6 +22,8 @@ exports.pluginOptionsSchema = ({ Joi }) => {
       )
   })
 }
+
+setConcurrency(1)
 
 exports.sourceNodes = async (
   { actions: { createNode }, cache, createContentDigest, createNodeId, store },
@@ -52,9 +55,10 @@ exports.sourceNodes = async (
   }
 
   const result = await getAllProducts()
-  const products = await Promise.all(
-    result.map(async ({ id }) => await printful.get(`sync/products/${id}`))
-  )
+  const products = await map(result, async ({ id }) => {
+    await sleep(200)
+    return await printful.get(`sync/products/${id}`)
+  })
 
   const catalogProductIds = products
     .map(({ result: { sync_variants: variants } }) =>
@@ -67,13 +71,14 @@ exports.sourceNodes = async (
     []
   )
 
-  const catalogProducts = await Promise.all(
-    uniqueCatalogProductIds.map(
-      async (id) => await printful.get(`products/${id}`)
-    )
-  )
+  const catalogProducts = await map(uniqueCatalogProductIds, async (id) => {
+    await sleep(200)
+    return await printful.get(`products/${id}`)
+  })
 
+  await sleep(500)
   const { result: countries } = await printful.get(`countries`)
+  await sleep(500)
   const { result: storeInformation } = await printful.get(`store`)
 
   const processCountry = async (country) => {
